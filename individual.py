@@ -3,6 +3,5 @@ import numpy as np
 class Individual:
     def __init__(self,params):
         self.params = params
-
-    def get_fitness(self):
-        pass
+        self.gene = list(params.values())
+        self.score = -1
