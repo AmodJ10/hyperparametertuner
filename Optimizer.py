@@ -88,11 +88,67 @@ class Optimizer:
             else:
                 self.roulette_wheel()
 
-    def crossover(self):
-        pass
+    def blend_crossover(parent1, parent2, alpha=0.5):
+    child = {}
+    for key in parent1:
+        child[key] = alpha * parent1[key] + (1 - alpha) * parent2[key]
+    return child
 
-    def mutate(self):
-        pass
-
-    def hasConvergered(self):
-        pass
+    def mutate(individual, mutation_rate=0.1):
+        mutated_individual = {}
+        for key, value in individual.items():
+            if np.random.rand() < mutation_rate:
+                # Add random noise to the hyperparameter value
+                mutated_individual[key] = value + np.random.normal(scale=0.1)
+            else:
+                mutated_individual[key] = value
+        return mutated_individual
+    
+    def has_converged(best_fitness_values, tol=1e-5, patience=5):
+        # Check if the best fitness values have converged over a certain patience period
+        if len(best_fitness_values) < patience + 1:
+            return False
+        
+        recent_best = best_fitness_values[-patience:]
+        return np.max(recent_best) - np.min(recent_best) < tol
+    
+    def differential_evolution(population, fitness_function, F=0.5, CR=0.7, mutation_rate=0.1, generations=100, convergence_tol=1e-5, convergence_patience=5):
+        best_fitness_values = []
+        
+        for generation in range(generations):
+            for i in range(len(population)):
+                target = population[i]
+                
+                # Select two distinct random indices other than the current one
+                indices = np.random.choice([idx for idx in range(len(population)) if idx != i], size=2, replace=False)
+                base, donor1, donor2 = population[indices[0]], population[indices[1]], population[i]
+                
+                # Create trial vector using blend crossover
+                trial_vector = {key: blend_crossover(base[key], donor1[key], F) for key in base}
+                
+                # Apply mutation
+                trial_vector = mutate(trial_vector, mutation_rate)
+                
+                # Apply crossover with probability CR
+                for key in base:
+                    if np.random.rand() > CR:
+                        trial_vector[key] = target[key]
+                
+                # Evaluate fitness of trial vector
+                target_fitness = fitness_function(target)
+                trial_fitness = fitness_function(trial_vector)
+                
+                # Update population if trial vector is better
+                if trial_fitness > target_fitness:
+                    population[i] = trial_vector
+            
+            # Track the best fitness value in each generation
+            best_fitness_values.append(max(fitness_function(individual) for individual in population))
+            
+            # Check for convergence
+            if has_converged(best_fitness_values, convergence_tol, convergence_patience):
+                print(f"Converged after {generation + 1} generations.")
+                break
+        
+        # Return the best individual from the final population
+        return max(population, key=fitness_function)
