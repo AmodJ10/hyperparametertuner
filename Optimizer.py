@@ -81,20 +81,50 @@ class Optimizer:
             else:
                 self.roulette_wheel()
 
-    def blend_crossover(parent1, parent2, alpha=0.5):
-        child = {}
-        for key in parent1:
-            child[key] = alpha * parent1[key] + (1 - alpha) * parent2[key]
-        return child
+    def uniform_crossover(parent1, parent2):
+    child_gene = {}
+    for key in parent1.gene:
+        if np.random.rand() < 0.5:
+            child_gene[key] = parent1.gene[key]
+        else:
+            child_gene[key] = parent2.gene[key]
+    return Individual(child_gene)
 
-    def mutate(individual, mutation_rate=0.1):
-        mutated_individual = {}
-        for key, value in individual.items():
-            if random.random() < mutation_rate:
-                mutated_individual[key] = value + random.random(scale=0.1)
+def blend_crossover(parent1, parent2, alpha=0.5):
+    child_gene = {}
+    for key in parent1.gene:
+        value_type = parent1.gene[key][1]
+        if value_type == bool:
+            child_gene[key] = np.random.choice([parent1.gene[key], parent2.gene[key]])
+        else:
+            rand_val = np.random.uniform(-alpha * diff, (1 + alpha) * diff)
+            value = parent1.gene[key][1] + rand_val
+
+            child_gene[key] = [value, value_type]
+
+    return Individual(child_gene)
+
+def crossover(parent1, parent2, crossover_prob=0.5):
+    if np.random.rand() < crossover_prob:
+        return uniform_crossover(parent1, parent2)
+    else:
+        return blend_crossover(parent1, parent2)
+
+    def mutation(individual, mutation_prob=0.1):
+    mutated_gene = {}
+    for key in individual.gene:
+        if np.random.rand() < mutation_prob:
+            value_type = individual.ranges[key][1]
+            low, high = individual.ranges[key][0]
+            
+            if value_type == bool:
+                mutated_gene[key] = not individual.gene[key]
             else:
-                mutated_individual[key] = value
-        return mutated_individual
+                mutated_gene[key] = np.random.uniform(low, high)
+        else:
+            mutated_gene[key] = individual.gene[key]
+
+    return Individual(mutated_gene, individual.ranges)
     
     def has_converged(best_fitness_values, tol=1e-5, patience=5):
         if len(best_fitness_values) < patience + 1:
