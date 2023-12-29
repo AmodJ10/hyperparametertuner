@@ -1,7 +1,6 @@
 import numpy as np
 
 class Individual:
-    def __init__(self,params):
-        self.params = params
-        self.gene = list(params.values())
+    def __init__(self,gene):
+        self.gene = gene
         self.score = -1
