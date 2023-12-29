@@ -95,9 +95,9 @@ def blend_crossover(parent1, parent2, alpha=0.5):
     for key in parent1.gene:
         value_type = parent1.gene[key][1]
         if value_type == bool:
-            child_gene[key] = np.random.choice([parent1.gene[key], parent2.gene[key]])
+            child_gene[key] = random.choice([parent1.gene[key], parent2.gene[key]])
         else:
-            rand_val = np.random.uniform(-alpha * diff, (1 + alpha) * diff)
+            rand_val = random.uniform(-alpha * diff, (1 + alpha) * diff)
             value = parent1.gene[key][1] + rand_val
 
             child_gene[key] = [value, value_type]
@@ -119,8 +119,10 @@ def crossover(parent1, parent2, crossover_prob=0.5):
             
             if value_type == bool:
                 mutated_gene[key] = not individual.gene[key]
+            elif value_type == int:
+                mutated_gene[key] = random.randint(low,high)
             else:
-                mutated_gene[key] = np.random.uniform(low, high)
+                mutated_gene[key] = random.uniform(low, high)
         else:
             mutated_gene[key] = individual.gene[key]
 
