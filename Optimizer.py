@@ -5,11 +5,12 @@ import random
 import bisect
 
 class Optimizer:
-    def __init__(self,X,y,model,ranges,selection="both",population=10,n_splits = 5,selection_chance=0.5,tournament_split=2):
+    def __init__(self,X,y,model,ranges,max_generation=10,selection="both",population=10,n_splits = 5,selection_chance=0.5,tournament_split=2):
         self.kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
         self.X = X
         self.y = y
         self.model = model
+        self.max_generation = max_generation
         self.ranges = ranges
         self.selection = selection
         self.tournament_split = tournament_split
@@ -17,6 +18,8 @@ class Optimizer:
         self.selection_chance = selection_chance
         self.indis = []
         self.roulette_probs = []
+        self.best_scores = []
+        self.average_scores = []
     
     def getScore(self,indi):
         new_model = clone(self.model)
@@ -35,11 +38,17 @@ class Optimizer:
         for _ in range(self.population):
             indi = {}
             for key,value in ranges.items():
-                if value[1] is int:
-                    indi[key] = [random.randint(value[0][0],value[0][1]),value[1]]
+                value_type = ranges.gene[key][1]
+                low, high = ranges.ranges[key][0]
+                if value_type == bool:
+                    indi[key] = [random.choice((True,False)),value_type]
+                elif value_type == str:
+                    indi[key] = [random.choice(ranges[key][0]),value_type]
+                elif value[1] == int:
+                    indi[key] = [random.randint(low,high),value_type]
                 else:
-                    indi[key] = [random.uniform(value[0][0],value[0][1]),value[1]]
-            indis.append(Individual(indi))      # Added initialisation of Individual
+                    indi[key] = [random.uniform(low,high),value_type]
+            indis.append(Individual(indi))
         self.indis = indis
         self.sort_indis()
 
@@ -49,8 +58,11 @@ class Optimizer:
             if i.score == -1:
                 i.score = self.getScore(i)
         indis.sort(key=lambda x: x.score)
-        self.indis = indis
+        indis = indis[-self.population:]
         sum_score = sum((i.score for i in indis))
+        self.best_scores.append(indis[-1].score)
+        self.average_scores.append(sum_score/self.population)
+
         roulette_probs = [i.score/sum_score for i in indis]
         roulette_prob_sum = 0
         for i in range(len(roulette_prob_sum)):
@@ -72,72 +84,92 @@ class Optimizer:
     
     def select(self):
         if self.selection == 'tournament':
-            return self.tournament()    # Added return statement
+            return self.tournament()
         elif self.selection == 'roulette':
-            return self.roulette_wheel() # Added return statement
+            return self.roulette_wheel()
         else:
             if random.random() < self.selection_chance:
-                return self.tournament() # Added return statement
+                return self.tournament()
             else:
-                return self.roulette_wheel()  # Added return statement
+                return self.roulette_wheel()
 
-    def uniform_crossover(parent1, parent2):
-    child_gene =  {}
-    for key in parent1.gene:
-        if np.random.rand() < 0.5:
-            child_gene[key] = parent1.gene[key]
-        else:
-            child_gene[key] = parent2.gene[key]
-    return Individual(child_gene)
+    def uniform_crossover(self,parent1, parent2):
+        child_gene =  {}
+        for key in parent1.gene:
+            if random.random() < 0.5:
+                child_gene[key] = parent1.gene[key]
+            else:
+                child_gene[key] = parent2.gene[key]
+        return Individual(child_gene)
 
-def blend_crossover(parent1, parent2, alpha=0.5):
-    child_gene = {}
-    for key in parent1.gene:
-        value_type = parent1.gene[key][1]
-        if value_type == bool:
-            child_gene[key] = random.choice([parent1.gene[key], parent2.gene[key]])
-        else:
-            rand_val = random.uniform(-alpha * diff, (1 + alpha) * diff)
-            value = parent1.gene[key][0] + rand_val
-
-            child_gene[key] = [value, value_type]
-
-    return Individual(child_gene)
-
-def crossover(parent1, parent2, crossover_prob=0.5):
-    if np.random.rand() < crossover_prob:
-        return uniform_crossover(parent1, parent2)
-    else:
-        return blend_crossover(parent1, parent2)
-
-    def mutation(individual, mutation_prob=0.1):
-    mutated_gene = {}
-    for key in individual.gene:
-        if np.random.rand() < mutation_prob:
-            value_type = individual.ranges[key][1]
-            low, high = individual.ranges[key][0]
-            
+    def blend_crossover(self,parent1, parent2, alpha=0.5):
+        child_gene = {}
+        for key in parent1.gene:
+            value_type = parent1.gene[key][1]
             if value_type == bool:
-                mutated_gene[key] = not individual.gene[key]
+                child_gene[key] = random.choice([parent1.gene[key], parent2.gene[key]])
+            elif value_type == str:
+                child_gene[key] = random.choice([parent1.gene[key], parent2.gene[key]])
             elif value_type == int:
-                mutated_gene[key] = random.randint(low,high)
+                value = int(alpha * parent1[key][0] + (1 -alpha) * parent2[key][0])
+                child_gene[key] = [value, value_type]
             else:
-                mutated_gene[key] = random.uniform(low, high)
-        else:
-            mutated_gene[key] = individual.gene[key]
+                value = alpha * parent1[key][0] + (1 -alpha) * parent2[key][0]
+                child_gene[key] = [value, value_type]
 
-    return Individual(mutated_gene)
+        return Individual(child_gene)
+
+    def crossover(self,parent1, parent2, crossover_prob=0.5):
+        if random.random() < crossover_prob:
+            return self.uniform_crossover(parent1, parent2)
+        else:
+            return self.blend_crossover(parent1, parent2)
+
+    def mutate(self,individual, mutation_prob=0.1):
+        mutated_gene = {}
+        for key in individual.gene:
+            if random.random() < mutation_prob:
+                value_type = individual.ranges[key][1]
+                low, high = individual.ranges[key][0]
+                
+                if value_type == bool:
+                    mutated_gene[key] = not individual.gene[key]
+                elif value_type == str:
+                    mutated_gene[key] = random.choice(self.ranges[key][0])
+                elif value_type == int:
+                    mutated_gene[key] = random.randint(low,high)
+                else:
+                    mutated_gene[key] = random.uniform(low, high)
+            else:
+                mutated_gene[key] = individual.gene[key]
+
+        return Individual(mutated_gene)
     
-    def has_converged(best_fitness_values, tol=1e-5, patience=5):
+    def has_converged(self, tolerance=1e-5, patience=5):
         try:
-            if len(best_fitness_values) < patience + 1:
+            if len(self.best_scores) < patience + 1:
                 return False
-            return ((best_fitness_values[-patience:] - best_fitness_values[-1:]) < tol)
+            return ((self.best_scores[-patience:] - self.best_scores[-1:]) < tolerance)
         except TypeError:
-            # Handle the case where best_fitness_values is not a numerical array
             return False
         except Exception as e:
-            # Handle other unexpected exceptions
             print(f"An error occurred: {e}")
             return False
     
+    def search(self):
+        self.spawn()
+        for generation in range(self.max_generation):
+            indis = self.indis
+            for _ in range(self.population):
+                parent1, parent2 = self.select()
+                child = self.crossover(parent1,parent2)
+                child = self.mutate(child)
+                indis.append(child)
+            self.indis = indis
+            self.sort_indis()
+            print(f"Generation {generation} : Best Score : {self.best_scores[-1]}, Avg Score : {self.average_scores[-1]}")
+            if self.has_converged():
+                break
+            
+    def get_best_params(self):
+        return self.indis[-1].gene
