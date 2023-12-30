@@ -39,7 +39,7 @@ class Optimizer:
                     indi[key] = [random.randint(value[0][0],value[0][1]),value[1]]
                 else:
                     indi[key] = [random.uniform(value[0][0],value[0][1]),value[1]]
-            indis.append(indi)
+            indis.append(Individual(indi))      # Added initialisation of Individual
         self.indis = indis
         self.sort_indis()
 
@@ -72,17 +72,17 @@ class Optimizer:
     
     def select(self):
         if self.selection == 'tournament':
-            self.tournament()
+            return self.tournament()    # Added return statement
         elif self.selection == 'roulette':
-            self.roulette_wheel()
+            return self.roulette_wheel() # Added return statement
         else:
             if random.random() < self.selection_chance:
-                self.tournament()
+                return self.tournament() # Added return statement
             else:
-                self.roulette_wheel()
+                return self.roulette_wheel()  # Added return statement
 
     def uniform_crossover(parent1, parent2):
-    child_gene = {}
+    child_gene =  {}
     for key in parent1.gene:
         if np.random.rand() < 0.5:
             child_gene[key] = parent1.gene[key]
@@ -98,7 +98,7 @@ def blend_crossover(parent1, parent2, alpha=0.5):
             child_gene[key] = random.choice([parent1.gene[key], parent2.gene[key]])
         else:
             rand_val = random.uniform(-alpha * diff, (1 + alpha) * diff)
-            value = parent1.gene[key][1] + rand_val
+            value = parent1.gene[key][0] + rand_val
 
             child_gene[key] = [value, value_type]
 
@@ -126,10 +126,18 @@ def crossover(parent1, parent2, crossover_prob=0.5):
         else:
             mutated_gene[key] = individual.gene[key]
 
-    return Individual(mutated_gene, individual.ranges)
+    return Individual(mutated_gene)
     
     def has_converged(best_fitness_values, tol=1e-5, patience=5):
-        if len(best_fitness_values) < patience + 1:
+        try:
+            if len(best_fitness_values) < patience + 1:
+                return False
+            return ((best_fitness_values[-patience:] - best_fitness_values[-1:]) < tol)
+        except TypeError:
+            # Handle the case where best_fitness_values is not a numerical array
             return False
-        return best_fitness_values[-patience:] - best_fitness_values[-1:] < tol
+        except Exception as e:
+            # Handle other unexpected exceptions
+            print(f"An error occurred: {e}")
+            return False
     
