@@ -25,12 +25,12 @@ class Optimizer:
         new_model = clone(self.model)
         new_params = new_model.get_params()
         
-        for param, value in indi.params.items():
+        for param, value in indi.gene.items():
             new_params[param] = value
         
         new_model.set_params(**new_params)
-        cv_scores = cross_val_score(new_model, self.X, self.y, cv=self.kfold, scoring='accuracy')
-        return cv_scores.mean()
+        cv_scores = cross_val_score(new_model, self.X, self.y, cv=self.kfold, scoring='neg_mean_squared_error')
+        return -(cv_scores.mean())
 
     def spawn(self):
         indis = []
@@ -38,16 +38,17 @@ class Optimizer:
         for _ in range(self.population):
             indi = {}
             for key,value in ranges.items():
-                value_type = ranges.gene[key][1]
-                low, high = ranges.ranges[key][0]
+                value_type = ranges[key][1]
+                # print("Hello")
+                low, high = ranges[key][0][0], ranges[key][0][1]
                 if value_type == bool:
-                    indi[key] = [random.choice((True,False)),value_type]
+                    indi[key] = random.choice((True,False))
                 elif value_type == str:
-                    indi[key] = [random.choice(ranges[key][0]),value_type]
+                    indi[key] = random.choice(ranges[key][0])
                 elif value[1] == int:
-                    indi[key] = [random.randint(low,high),value_type]
+                    indi[key] = random.randint(low,high)
                 else:
-                    indi[key] = [random.uniform(low,high),value_type]
+                    indi[key] = random.uniform(low,high)
             indis.append(Individual(indi))
         self.indis = indis
         self.sort_indis()
@@ -65,7 +66,7 @@ class Optimizer:
 
         roulette_probs = [i.score/sum_score for i in indis]
         roulette_prob_sum = 0
-        for i in range(len(roulette_prob_sum)):
+        for i in range(len(roulette_probs)):
             roulette_prob_sum += roulette_probs[i]
             roulette_probs[i] = roulette_prob_sum
         self.roulette_probs = roulette_probs
@@ -105,17 +106,17 @@ class Optimizer:
     def blend_crossover(self,parent1, parent2, alpha=0.5):
         child_gene = {}
         for key in parent1.gene:
-            value_type = parent1.gene[key][1]
+            value_type = self.ranges[key][1]
             if value_type == bool:
                 child_gene[key] = random.choice([parent1.gene[key], parent2.gene[key]])
             elif value_type == str:
                 child_gene[key] = random.choice([parent1.gene[key], parent2.gene[key]])
             elif value_type == int:
-                value = int(alpha * parent1[key][0] + (1 -alpha) * parent2[key][0])
-                child_gene[key] = [value, value_type]
+                value = int(alpha * parent1.gene[key] + (1 -alpha) * parent2.gene[key])
+                child_gene[key] = value
             else:
-                value = alpha * parent1[key][0] + (1 -alpha) * parent2[key][0]
-                child_gene[key] = [value, value_type]
+                value = alpha * parent1.gene[key] + (1 -alpha) * parent2.gene[key]
+                child_gene[key] = value
 
         return Individual(child_gene)
 
@@ -129,8 +130,8 @@ class Optimizer:
         mutated_gene = {}
         for key in individual.gene:
             if random.random() < mutation_prob:
-                value_type = individual.ranges[key][1]
-                low, high = individual.ranges[key][0]
+                value_type = self.ranges[key][1]
+                low, high = self.ranges[key][0]
                 
                 if value_type == bool:
                     mutated_gene[key] = not individual.gene[key]
