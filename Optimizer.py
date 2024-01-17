@@ -3,15 +3,18 @@ from individual import Individual
 from sklearn.base import clone
 import random
 import bisect
+from joblib import Parallel, delayed
 
 class Optimizer:
-    def __init__(self,X,y,model,ranges,max_generation=10,selection="both",population=10,n_splits = 5,selection_chance=0.5,tournament_split=2):
+    def __init__(self,X,y,model,model_type,ranges,parllel_computing = True,max_generation=10,selection="both",population=10,n_splits = 5,selection_chance=0.5,tournament_split=2):
         self.kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
         self.X = X
         self.y = y
         self.model = model
+        self.model_type = model_type
         self.max_generation = max_generation
         self.ranges = ranges
+        self.parallel_computing = parllel_computing
         self.selection = selection
         self.tournament_split = tournament_split
         self.population = population
@@ -22,6 +25,8 @@ class Optimizer:
         self.average_scores = []
     
     def getScore(self,indi):
+        if indi.score != -1:
+            return indi.score
         new_model = clone(self.model)
         new_params = new_model.get_params()
         
@@ -29,8 +34,15 @@ class Optimizer:
             new_params[param] = value
         
         new_model.set_params(**new_params)
-        cv_scores = cross_val_score(new_model, self.X, self.y, cv=self.kfold, scoring='neg_mean_squared_error')
-        return -(cv_scores.mean())
+        if self.model_type == "regression":
+            cv_scores = cross_val_score(new_model, self.X, self.y, cv=self.kfold, scoring='neg_mean_squared_error')
+            indi.score = cv_scores.mean()
+            return indi.score
+        else:
+            cv_scores = cross_val_score(new_model, self.X, self.y, cv=self.kfold, scoring='accuracy')
+            indi.score = cv_scores.mean()
+            return indi.score
+    
 
     def spawn(self):
         indis = []
@@ -55,22 +67,36 @@ class Optimizer:
 
     def sort_indis(self):
         indis = self.indis
-        for i in indis:
-            if i.score == -1:
+        if self.parallel_computing:
+           scores = Parallel(n_jobs=-1)(delayed(self.getScore)(i) for i in indis)
+        #    print(scores)
+           for i, score in enumerate(scores):
+               indis[i].score = score
+        else:
+            for i in indis:
                 i.score = self.getScore(i)
+            
         indis.sort(key=lambda x: x.score)
         indis = indis[-self.population:]
+
+        if self.selection != 'tournament':
+            self.precomputeRouletteWheelProbs(indis)
+        
+        self.indis = indis
+    
+    def precomputeRouletteWheelProbs(self,indis):
         sum_score = sum((i.score for i in indis))
         self.best_scores.append(indis[-1].score)
         self.average_scores.append(sum_score/self.population)
 
         roulette_probs = [i.score/sum_score for i in indis]
         roulette_prob_sum = 0
+        
         for i in range(len(roulette_probs)):
             roulette_prob_sum += roulette_probs[i]
             roulette_probs[i] = roulette_prob_sum
         self.roulette_probs = roulette_probs
-    
+
     def tournament(self):
         tournament_indis = random.sample(range(len(self.indis)),self.tournament_split)
         tournament_indis.sort()
