@@ -6,7 +6,7 @@ import bisect
 from joblib import Parallel, delayed
 
 class Optimizer:
-    def __init__(self,X,y,model,model_type,ranges,parllel_computing = True,max_generation=10,selection="both",population=10,n_splits = 5,selection_chance=0.5,tournament_split=2,mutation_rate = 0.2):
+    def __init__(self,X,y,model,model_type,ranges,parllel_computing = True,max_generation=10,selection="both",population=10,n_splits = 5,selection_chance=0.5,mutation_prob=0.1,new_population_chance=0.1,tournament_split=2):
         self.kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
         self.X = X
         self.y = y
@@ -19,11 +19,13 @@ class Optimizer:
         self.tournament_split = tournament_split
         self.population = population
         self.selection_chance = selection_chance
+        self.mutation_prob = mutation_prob
         self.indis = []
         self.roulette_probs = []
         self.best_scores = []
         self.average_scores = []
-        self.mutation_rate = mutation_rate
+        self.new_population_ratio = 1/5
+        self.new_population_chance = new_population_chance
     
     def getScore(self,indi):
         if indi.score != -1:
@@ -44,20 +46,19 @@ class Optimizer:
             indi.score = cv_scores.mean()
             return indi.score
     
-
-    def spawn(self):
-        indis = []
+    def get_new_indi(self):
+        indi = {}
         ranges = self.ranges
         for _ in range(self.population):
             indi = {}
             for key,value in ranges.items():
-                value_type = value[1]
-                if value_type == int or value_type == float:
-                    low, high = value[0][0] , value[0][1]
+                value_type = ranges[key][1]
+                # print("Hello")
+                low, high = ranges[key][0][0], ranges[key][0][1]
                 if value_type == bool:
                     indi[key] = random.choice((True,False))
                 elif value_type == str:
-                    indi[key] = random.choice(value[0])
+                    indi[key] = random.choice(ranges[key][0])
                 elif value[1] == int:
                     indi[key] = random.randint(low,high)
                 else:
@@ -152,11 +153,10 @@ class Optimizer:
         else:
             return self.blend_crossover(parent1, parent2)
 
-    def mutate(self,individual):
-        mutation_prob=self.mutation_rate
+    def mutate(self,individual, mutation_prob=0.1):
         mutated_gene = {}
         for key in individual.gene:
-            if random.random() < mutation_prob:
+            if random.random() < self.mutation_prob:
                 value_type = self.ranges[key][1]
                 if value_type == int or value_type == float:
                     low, high = self.ranges[key][0]
@@ -185,6 +185,14 @@ class Optimizer:
             print(f"An error occurred: {e}")
             return False
     
+    def add_new_population(self):
+        new_population_count = int(self.population*self.new_population_ratio)
+        indis = self.indis
+        for i in range(new_population_count):
+            indi = self.get_new_indi()
+            indis[-new_population_count + i] = indi
+        self.indis = indis
+
     def search(self):
         self.spawn()
         for generation in range(self.max_generation):
@@ -199,6 +207,8 @@ class Optimizer:
             print(f"Generation {generation} : Best Score : {self.best_scores[-1]}, Avg Score : {self.average_scores[-1]}")
             if self.has_converged():
                 break
+            if random.random() < self.new_population_chance:
+                self.add_new_population()
             
     def get_best_params(self):
         return self.indis[-1].gene
