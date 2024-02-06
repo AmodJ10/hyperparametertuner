@@ -6,7 +6,7 @@ import bisect
 from joblib import Parallel, delayed
 
 class Optimizer:
-    def __init__(self,X,y,model,model_type,ranges,parllel_computing = True,max_generation=10,selection="both",population=10,n_splits = 5,selection_chance=0.5,tournament_split=2):
+    def __init__(self,X,y,model,model_type,ranges,parllel_computing = True,max_generation=10,selection="both",population=10,n_splits = 5,selection_chance=0.5,tournament_split=2,mutation_rate = 0.2):
         self.kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
         self.X = X
         self.y = y
@@ -23,16 +23,17 @@ class Optimizer:
         self.roulette_probs = []
         self.best_scores = []
         self.average_scores = []
+        self.mutation_rate = mutation_rate
     
     def getScore(self,indi):
         if indi.score != -1:
             return indi.score
         new_model = clone(self.model)
         new_params = new_model.get_params()
-        
+
         for param, value in indi.gene.items():
-            new_params[param] = value
-        
+            new_params[param] = value    
+
         new_model.set_params(**new_params)
         if self.model_type == "regression":
             cv_scores = cross_val_score(new_model, self.X, self.y, cv=self.kfold, scoring='neg_mean_squared_error')
@@ -50,13 +51,13 @@ class Optimizer:
         for _ in range(self.population):
             indi = {}
             for key,value in ranges.items():
-                value_type = ranges[key][1]
-                # print("Hello")
-                low, high = ranges[key][0][0], ranges[key][0][1]
+                value_type = value[1]
+                if value_type == int or value_type == float:
+                    low, high = value[0][0] , value[0][1]
                 if value_type == bool:
                     indi[key] = random.choice((True,False))
                 elif value_type == str:
-                    indi[key] = random.choice(ranges[key][0])
+                    indi[key] = random.choice(value[0])
                 elif value[1] == int:
                     indi[key] = random.randint(low,high)
                 else:
@@ -69,7 +70,6 @@ class Optimizer:
         indis = self.indis
         if self.parallel_computing:
            scores = Parallel(n_jobs=-1)(delayed(self.getScore)(i) for i in indis)
-        #    print(scores)
            for i, score in enumerate(scores):
                indis[i].score = score
         else:
@@ -152,12 +152,14 @@ class Optimizer:
         else:
             return self.blend_crossover(parent1, parent2)
 
-    def mutate(self,individual, mutation_prob=0.1):
+    def mutate(self,individual):
+        mutation_prob=self.mutation_rate
         mutated_gene = {}
         for key in individual.gene:
             if random.random() < mutation_prob:
                 value_type = self.ranges[key][1]
-                low, high = self.ranges[key][0]
+                if value_type == int or value_type == float:
+                    low, high = self.ranges[key][0]
                 
                 if value_type == bool:
                     mutated_gene[key] = not individual.gene[key]
