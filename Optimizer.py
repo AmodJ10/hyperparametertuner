@@ -46,23 +46,29 @@ class Optimizer:
             indi.score = cv_scores.mean()
             return indi.score
     
-    def get_new_indi(self):
+
+    def get_new_indi(self,ranges):
         indi = {}
+        for key,value in ranges.items():
+            value_type = ranges[key][1]
+            # print("Hello")
+            low, high = ranges[key][0][0], ranges[key][0][1]
+            if value_type == bool:
+                indi[key] = random.choice((True,False))
+            elif value_type == str:
+                indi[key] = random.choice(ranges[key][0])
+            elif value[1] == int:
+                indi[key] = random.randint(low,high)
+            else:
+                indi[key] = random.uniform(low,high)
+        return indi
+
+
+    def spawn(self):
+        indis = []
         ranges = self.ranges
         for _ in range(self.population):
-            indi = {}
-            for key,value in ranges.items():
-                value_type = ranges[key][1]
-                # print("Hello")
-                low, high = ranges[key][0][0], ranges[key][0][1]
-                if value_type == bool:
-                    indi[key] = random.choice((True,False))
-                elif value_type == str:
-                    indi[key] = random.choice(ranges[key][0])
-                elif value[1] == int:
-                    indi[key] = random.randint(low,high)
-                else:
-                    indi[key] = random.uniform(low,high)
+            indi = self.get_new_indi(ranges)
             indis.append(Individual(indi))
         self.indis = indis
         self.sort_indis()
@@ -189,8 +195,8 @@ class Optimizer:
         new_population_count = int(self.population*self.new_population_ratio)
         indis = self.indis
         for i in range(new_population_count):
-            indi = self.get_new_indi()
-            indis[-new_population_count + i] = indi
+            indi = self.get_new_indi(self.ranges)
+            indis[i] = Individual(indi)
         self.indis = indis
 
     def search(self):
