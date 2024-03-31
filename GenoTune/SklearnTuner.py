@@ -1,35 +1,54 @@
 from sklearn.model_selection import KFold, cross_val_score
-from individual import Individual
 from sklearn.base import clone
 import random
 import bisect
 from joblib import Parallel, delayed
 
-random.seed(42)
+class Individual:
+    def __init__(self,gene):
+        self.gene = gene
+        self.score = -1
 
-class Optimizer:
-    def __init__(self,X,y,model,model_type,ranges,parllel_computing = True,max_generation=10,selection="both",population=10,n_splits = 5,selection_chance=0.5,mutation_prob=0.1,new_population_chance=0.1,tournament_split=2):
-
+class SklearnTuner:
+    def __init__(
+            self,
+            X,
+            y,
+            model,
+            model_type,
+            param_distributions,
+            parllel_computing = True,
+            max_generation=10,
+            selection="both",
+            population=10,
+            n_splits = 5,
+            selection_chance=0.5,
+            mutation_chance=0.1,
+            new_population_chance=0.1,
+            tournament_split=2,
+            convergence_tolerance = 1e-5
+            ):
         self.kfold = KFold(n_splits=n_splits, shuffle=True, random_state=42)
         self.X = X
         self.y = y
         self.model = model
         self.model_type = model_type
         self.max_generation = max_generation
-        self.ranges = ranges
+        self.param_distributions = param_distributions
         self.parallel_computing = parllel_computing
         self.selection = selection
         self.tournament_split = tournament_split
         self.population = population
         self.selection_chance = selection_chance
-        self.mutation_prob = mutation_prob
+        self.mutation_chance = mutation_chance
+        self.new_population_chance = new_population_chance
+        self.convergence_tolerance = convergence_tolerance
         self.indis = []
         self.roulette_probs = []
         self.best_scores = []
         self.average_scores = []
         self.new_population_ratio = 1/5
-        self.new_population_chance = new_population_chance
-    
+ 
     def getScore(self,indi):
         if indi.score != -1:
             return indi.score
@@ -48,17 +67,16 @@ class Optimizer:
             cv_scores = cross_val_score(new_model, self.X, self.y, cv=self.kfold, scoring='accuracy')
             indi.score = cv_scores.mean()
             return indi.score
-    
 
-    def get_new_indi(self,ranges):
+    def get_new_indi(self,param_distributions):
         indi = {}
-        for key,value in ranges.items():
-            value_type = ranges[key][1]
-            low, high = ranges[key][0][0], ranges[key][0][1]
+        for key,value in param_distributions.items():
+            value_type = param_distributions[key][1]
+            low, high = param_distributions[key][0][0], param_distributions[key][0][1]
             if value_type == bool:
                 indi[key] = random.choice((True,False))
             elif value_type == str:
-                indi[key] = random.choice(ranges[key][0])
+                indi[key] = random.choice(param_distributions[key][0])
             elif value[1] == int:
                 indi[key] = random.randint(low,high)
             else:
@@ -68,9 +86,9 @@ class Optimizer:
 
     def spawn(self):
         indis = []
-        ranges = self.ranges
+        param_distributions = self.param_distributions
         for _ in range(self.population):
-            indi = self.get_new_indi(ranges)
+            indi = self.get_new_indi(param_distributions)
             indis.append(Individual(indi))
         self.indis = indis
         self.sort_indis()
@@ -141,7 +159,7 @@ class Optimizer:
     def blend_crossover(self,parent1, parent2, alpha=0.5):
         child_gene = {}
         for key in parent1.gene:
-            value_type = self.ranges[key][1]
+            value_type = self.param_distributions[key][1]
             if value_type == bool:
                 child_gene[key] = random.choice([parent1.gene[key], parent2.gene[key]])
             elif value_type == str:
@@ -161,18 +179,18 @@ class Optimizer:
         else:
             return self.blend_crossover(parent1, parent2)
 
-    def mutate(self,individual, mutation_prob=0.1):
+    def mutate(self,individual, mutation_chance=0.1):
         mutated_gene = {}
         for key in individual.gene:
-            if random.random() < self.mutation_prob:
-                value_type = self.ranges[key][1]
+            if random.random() < self.mutation_chance:
+                value_type = self.param_distributions[key][1]
                 if value_type == int or value_type == float:
-                    low, high = self.ranges[key][0]
+                    low, high = self.param_distributions[key][0]
                 
                 if value_type == bool:
                     mutated_gene[key] = not individual.gene[key]
                 elif value_type == str:
-                    mutated_gene[key] = random.choice(self.ranges[key][0])
+                    mutated_gene[key] = random.choice(self.param_distributions[key][0])
                 elif value_type == int:
                     mutated_gene[key] = random.randint(low,high)
                 else:
@@ -182,11 +200,11 @@ class Optimizer:
 
         return Individual(mutated_gene)
     
-    def has_converged(self, tolerance=1e-5, patience=5):
+    def has_converged(self, patience=5):
         try:
             if len(self.best_scores) < patience + 1:
                 return False
-            return ((self.best_scores[-patience:] - self.best_scores[-1:]) < tolerance)
+            return ((self.best_scores[-patience:] - self.best_scores[-1:]) < self.convergence_tolerance)
         except TypeError:
             return False
         except Exception as e:
@@ -197,7 +215,7 @@ class Optimizer:
         new_population_count = int(self.population*self.new_population_ratio)
         indis = self.indis
         for i in range(new_population_count):
-            indi = self.get_new_indi(self.ranges)
+            indi = self.get_new_indi(self.param_distributions)
             indis[i] = Individual(indi)
         self.indis = indis
 
@@ -220,3 +238,4 @@ class Optimizer:
             
     def get_best_params(self):
         return self.indis[-1].gene
+    
